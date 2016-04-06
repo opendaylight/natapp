@@ -1,0 +1,9 @@
+module natapp {
+    yang-version 1;
+    namespace "urn:opendaylight:params:xml:ns:yang:natapp";
+    prefix "natapp";
+
+    revision "2016-04-05" {
+        description "Initial revision of natapp model";
+    }
+}
