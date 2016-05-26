@@ -3,7 +3,96 @@ module natapp {
     namespace "urn:opendaylight:params:xml:ns:yang:natapp";
     prefix "natapp";
 
-    revision "2016-04-05" {
+    revision "2016-01-25" {
         description "Initial revision of natapp model";
+    }
+    container staticNat {
+    	leaf-list globalIP {
+    		type string;
+    	} 
+    }
+    
+    container staticMap {
+        list staticMappingInfo {
+            key globalIP;
+            leaf localIP {
+                type string;
+            }
+            leaf globalIP {
+                type string;
+            }
+        }    
+    }
+    
+    container dynamicNat {
+    	leaf-list globalIP {
+    		type string;
+    	} 
+    }
+    
+    container dynamicMap {
+        list dynamicMappingInfo {
+            key globalIP;
+            leaf localIP {
+                type string;
+            }
+            leaf globalIP {
+                type string;
+            }
+        }    
+    }
+    container patNat {
+    	leaf globalIP {
+    		type string;
+    	}
+    }
+    
+    container patMap {
+        list patMappingInfo {
+            key globalPort;
+            leaf localIP {
+                type string;
+            }
+            leaf localPort {
+                type int32;
+            }
+            leaf globalIP {
+                type string;
+            }          
+            leaf globalPort {
+                type int32;
+            }
+        }      
+    }
+  
+    rpc nat-type {
+    input {
+    	choice nat-type {
+    		default dynamic;
+    		case static {
+    			leaf static {
+    				type empty;
+    			}
+    		}
+    		case dynamic {
+    			leaf dynamic {
+    				type empty;
+    			}
+    		}
+    		case pat {
+    			leaf pat {
+    				type empty;
+    			}
+    		}
+    	}
+    }
+    }
+    
+    notification DynamicIPExhaustion {
+    	description " Dynamic Global IP exhausted ";
+    }
+    
+    notification PatOverConnection {
+    	description " Pat over Connection ";
     }
 }
