@@ -41,121 +41,108 @@ import org.opendaylight.yangtools.yang.binding.DataObject;
 import org.opendaylight.yangtools.yang.binding.InstanceIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.google.common.base.Optional;
 
 public class NatFlowHandler implements DataChangeListener {
-	private static final Logger logger = LoggerFactory.getLogger(NatFlowHandler.class);
-	private DataBroker dataBroker;
+    private static final Logger LOG = LoggerFactory.getLogger(NatFlowHandler.class);
+    private DataBroker dataBroker;
 
-	public NatFlowHandler(DataBroker broker) {
-		this.dataBroker = broker;
-		// flow
-		InstanceIdentifier<Flow> flowPath = InstanceIdentifier.builder(Nodes.class).child(Node.class)
-				.augmentation(FlowCapableNode.class).child(Table.class).child(Flow.class).build();
+    public NatFlowHandler(DataBroker broker) {
+        this.dataBroker = broker;
+        // flow
+        InstanceIdentifier<Flow> flowPath = InstanceIdentifier.builder(Nodes.class).child(Node.class)
+              .augmentation(FlowCapableNode.class).child(Table.class).child(Flow.class).build();
 
-		dataBroker.registerDataChangeListener(LogicalDatastoreType.OPERATIONAL, flowPath, this, DataChangeScope.BASE);
-	}
+        dataBroker.registerDataChangeListener(LogicalDatastoreType.OPERATIONAL, flowPath, this, DataChangeScope.BASE);
+    }
 
-	@Override
-	public void onDataChanged(AsyncDataChangeEvent<InstanceIdentifier<?>, DataObject> change) {
+    @Override
+    public void onDataChanged(AsyncDataChangeEvent<InstanceIdentifier<?>, DataObject> change) {
+        if (change == null) {
+            LOG.info("FlowHandler ===>>> onDataChanged: change is null");
+            return;
+        }
+        handleDeletedFlow(change);
+    }
 
-		if (change == null) {
-			logger.info("FlowHandler ===>>> onDataChanged: change is null");
-			return;
-		}
+    public static NodeBuilder createNodeBuilder(String nodeId) {
+        NodeBuilder builder = new NodeBuilder();
+        builder.setId(new NodeId(nodeId));
+        builder.setKey(new NodeKey(builder.getId()));
+        return builder;
+    }
 
-		handleDeletedFlow(change);
+    @SuppressWarnings("deprecation")
+    private void handleDeletedFlow(AsyncDataChangeEvent<InstanceIdentifier<?>, DataObject> change) {
 
-	}
+        NatYangStore natYangStore = new NatYangStore(dataBroker);
+        Set<InstanceIdentifier<?>> removedData = change.getRemovedPaths();
 
-	public static NodeBuilder createNodeBuilder(String nodeId) {
-		NodeBuilder builder = new NodeBuilder();
-		builder.setId(new NodeId(nodeId));
-		builder.setKey(new NodeKey(builder.getId()));
-		return builder;
-	}
-
-	@SuppressWarnings("deprecation")
-	private void handleDeletedFlow(AsyncDataChangeEvent<InstanceIdentifier<?>, DataObject> change) {
-		
-		NatYangStore natYangStore = new NatYangStore(dataBroker);
-		Set<InstanceIdentifier<?>> removedData = change.getRemovedPaths();
-
-		Iterator<InstanceIdentifier<?>> it = removedData.iterator();
-		if (it.hasNext()) {
-			while (it.hasNext()) {
-				logger.info("Set Iterator" + it.next().getPath());
-				
-				String globalSrcIP;
-				String nodeId = "openflow:1";
-				NodeBuilder nodeBuilder = createNodeBuilder(nodeId);
-				String flowIdString = "FlowSrc";
-				FlowId flowId = new FlowId(flowIdString);
-				FlowKey key = new FlowKey(flowId);
-
-				FlowBuilder flowBuilder = new FlowBuilder().setId(new FlowId(flowId)).setTableId((short) 0).setKey(key)
-						.setFlowName(flowIdString);
-
-				InstanceIdentifier<Flow> flowPath = InstanceIdentifier.builder(Nodes.class)
-						.child(Node.class, nodeBuilder.getKey()).augmentation(FlowCapableNode.class)
-						.child(Table.class, new TableKey(flowBuilder.getTableId()))
-						.child(Flow.class, flowBuilder.getKey()).build();
-
-				ReadOnlyTransaction readOnlyTransaction = dataBroker.newReadOnlyTransaction();
-				Flow flow = null;
-				try {
-					Optional<Flow> dataObjectOptional = null;
-					dataObjectOptional = readOnlyTransaction.read(LogicalDatastoreType.CONFIGURATION, flowPath).get();
-
-					flow = (Flow) dataObjectOptional.get();
-
-					List<Instruction> srcInstructionList = flow.getInstructions().getInstruction();
-
-					for (int i = 0; i < srcInstructionList.size(); i++) {
-						
-						List<Action> actionList = new ArrayList<>();
-						List<Action> existingActions;
-
-						for (Instruction in : srcInstructionList) {
-							if (in.getInstruction() instanceof ApplyActionsCase) {
-								existingActions = (((ApplyActionsCase) in.getInstruction()).getApplyActions()
-										.getAction());
-								actionList.addAll(existingActions);
-
-								for (Action action : actionList) {
-									if (action.getAction() instanceof SetNwSrcActionCase) {
-										SetNwSrcActionCase setNwSrcAction = (SetNwSrcActionCase) action.getAction();
-										Address address = setNwSrcAction.getSetNwSrcAction().getAddress();
-										if (address instanceof Ipv4) {
-											Ipv4 ipv4 = (Ipv4) address;
-											Ipv4Prefix ipv4Prefix = ipv4.getIpv4Address();
-											logger.info("Deleted GlobalIP" + ipv4Prefix.getValue());
-											globalSrcIP = ipv4Prefix.getValue();
-											int index = globalSrcIP.indexOf('/');
-											if (index > 0) {
-												globalSrcIP = globalSrcIP.substring(0, index);
-											}
-											logger.info("valid globalSrcIP "+globalSrcIP);
-											natYangStore.deleteDynamicIP(globalSrcIP);
-											return;
-										}
-									} else
-										logger.info("Invalid");
-								}
-							}
-						}
-					}
-				} catch (InterruptedException e) {
-					logger.info("Failed to read nodes from Operation data store.");
-					readOnlyTransaction.close();
-					throw new RuntimeException("Failed to read nodes from Operation data store.", e);
-				} catch (ExecutionException e) {
-					logger.info("Failed to read nodes from Operation data store.");
-					readOnlyTransaction.close();
-					throw new RuntimeException("Failed to read nodes from Operation data store.", e);
-				}
-			}
-		}
-	}
+        Iterator<InstanceIdentifier<?>> it = removedData.iterator();
+        if (it.hasNext()) {
+            while (it.hasNext()) {
+                LOG.info("Set Iterator" + it.next().getPath());
+                String globalSrcIP;
+                String nodeId = "openflow:1";
+                NodeBuilder nodeBuilder = createNodeBuilder(nodeId);
+                String flowIdString = "FlowSrc";
+                FlowId flowId = new FlowId(flowIdString);
+                FlowKey key = new FlowKey(flowId);
+                FlowBuilder flowBuilder = new FlowBuilder().setId(new FlowId(flowId)).setTableId((short) 0).setKey(key)
+                        .setFlowName(flowIdString);
+                InstanceIdentifier<Flow> flowPath = InstanceIdentifier.builder(Nodes.class)
+                        .child(Node.class, nodeBuilder.getKey()).augmentation(FlowCapableNode.class)
+                        .child(Table.class, new TableKey(flowBuilder.getTableId()))
+                        .child(Flow.class, flowBuilder.getKey()).build();
+                ReadOnlyTransaction readOnlyTransaction = dataBroker.newReadOnlyTransaction();
+                Flow flow = null;
+                try {
+                    Optional<Flow> dataObjectOptional = null;
+                    dataObjectOptional = readOnlyTransaction.read(LogicalDatastoreType.CONFIGURATION, flowPath).get();
+                    flow = (Flow) dataObjectOptional.get();
+                    List<Instruction> srcInstructionList = flow.getInstructions().getInstruction();
+                    for (int i = 0; i < srcInstructionList.size(); i++) {
+                        List<Action> actionList = new ArrayList<>();
+                        List<Action> existingActions;
+                        for (Instruction in : srcInstructionList) {
+                            if (in.getInstruction() instanceof ApplyActionsCase) {
+                                existingActions = (((ApplyActionsCase) in.getInstruction()).getApplyActions()
+                                         .getAction());
+                                actionList.addAll(existingActions);
+                                for (Action action : actionList) {
+                                    if (action.getAction() instanceof SetNwSrcActionCase) {
+                                        SetNwSrcActionCase setNwSrcAction = (SetNwSrcActionCase) action.getAction();
+                                        Address address = setNwSrcAction.getSetNwSrcAction().getAddress();
+                                        if (address instanceof Ipv4) {
+                                            Ipv4 ipv4 = (Ipv4) address;
+                                            Ipv4Prefix ipv4Prefix = ipv4.getIpv4Address();
+                                            LOG.info("Deleted GlobalIP" + ipv4Prefix.getValue());
+                                            globalSrcIP = ipv4Prefix.getValue();
+                                            int index = globalSrcIP.indexOf('/');
+                                            if (index > 0) {
+                                                globalSrcIP = globalSrcIP.substring(0, index);
+                                            }
+                                            LOG.info("valid globalSrcIP "+globalSrcIP);
+                                            natYangStore.deleteDynamicIP(globalSrcIP);
+                                            return;
+                                        }
+                                    } else {
+                                        LOG.info("Invalid");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    LOG.info("Failed to read nodes");
+                    readOnlyTransaction.close();
+                    throw new RuntimeException("Failed to read nodes from Operation data store.", e);
+                } catch (ExecutionException e) {
+                    LOG.info("Failed to read nodes");
+                    readOnlyTransaction.close();
+                    throw new RuntimeException("Failed to read nodes from Operation data store.", e);
+                }
+            }
+        }
+    }
 }

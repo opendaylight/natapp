@@ -16,13 +16,13 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.node.No
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.nodes.Node;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.nodes.NodeKey;
 
-public final class NatInventoryUtility {
+public class NatInventoryUtility {
 
-	public static NodeId getNodeId(NodeConnectorRef nodeConnectorRef) {
-		return nodeConnectorRef.getValue().firstKeyOf(Node.class, NodeKey.class).getId();
-	}
+    public static NodeId getNodeId(NodeConnectorRef nodeConnectorRef) {
+        return nodeConnectorRef.getValue().firstKeyOf(Node.class, NodeKey.class).getId();
+    }
 
-	public static NodeConnectorId getNodeConnectorId(NodeConnectorRef nodeConnectorRef) {
-		return nodeConnectorRef.getValue().firstKeyOf(NodeConnector.class, NodeConnectorKey.class).getId();
-	}
+    public static NodeConnectorId getNodeConnectorId(NodeConnectorRef nodeConnectorRef) {
+        return nodeConnectorRef.getValue().firstKeyOf(NodeConnector.class, NodeConnectorKey.class).getId();
+    }
 }

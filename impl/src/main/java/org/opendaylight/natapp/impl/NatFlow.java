@@ -52,157 +52,159 @@ import com.google.common.collect.Lists;
 
 public class NatFlow {
 
-	private static final Logger LOG = LoggerFactory.getLogger(NatFlow.class);
-	private DataBroker dataBroker;
- 	int hardTimeOut=0,priority1=209,priority2=210;
+    private static final Logger LOG = LoggerFactory.getLogger(NatFlow.class);
+    private static final int HIGH_PRIORITY = 211, LOW_PRIORITY = 212;
+    private static final int HARD_TIMEOUT = 0;
+    private DataBroker dataBroker;
 
-	public void setDataBroker(DataBroker dataBroker) {
-		this.dataBroker = dataBroker;
-	}
+    public void setDataBroker(DataBroker dataBroker) {
+        this.dataBroker = dataBroker;
+    }
 
-	public void createFlow(NodeId nodeId, NodeConnectorId inPort, NodeConnectorId outPort, String srcIP, String dstIP,
-			int timeout) {
+    public void createFlow(NodeId nodeId, NodeConnectorId inPort, NodeConnectorId outPort, String srcIP, String dstIP,
+            int timeout) {
 
-		String localPort = inPort.getValue();
-		if (localPort.contains("LOCAL") || srcIP.contains("null") || dstIP.contains("null") || srcIP.contains("-")) {
+        String localPort = inPort.getValue();
+        if (localPort.contains("LOCAL") || srcIP.contains("null") || dstIP.contains("null") || srcIP.contains("-")) {
 
-			// drop a packet
-			MatchBuilder matchBuilder = new MatchBuilder().setInPort(inPort);
-			List<Action> actionList = new ArrayList<Action>();
+            // drop a packet
+            MatchBuilder matchBuilder = new MatchBuilder().setInPort(inPort);
+            List<Action> actionList = new ArrayList<Action>();
 
-			DropActionBuilder drop = new DropActionBuilder();
-			DropAction dropAction = drop.build();
+            DropActionBuilder drop = new DropActionBuilder();
+            DropAction dropAction = drop.build();
 
-			Action action = new ActionBuilder().setOrder(0)
-					.setAction(new DropActionCaseBuilder().setDropAction(dropAction).build()).build();
-			actionList.add(action);
-			ApplyActionsBuilder aab = new ApplyActionsBuilder().setAction(actionList);
+            Action action = new ActionBuilder().setOrder(0)
+                    .setAction(new DropActionCaseBuilder().setDropAction(dropAction).build()).build();
+            actionList.add(action);
+            ApplyActionsBuilder aab = new ApplyActionsBuilder().setAction(actionList);
 
-			InstructionsBuilder isb = new InstructionsBuilder();
-			List<Instruction> instruction = Lists.newArrayList();
-			Instruction applyActionsInstruction = new InstructionBuilder().setOrder(0)
-					.setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab.build()).build()).build();
-			instruction.add(applyActionsInstruction);
+            InstructionsBuilder isb = new InstructionsBuilder();
+            List<Instruction> instruction = Lists.newArrayList();
+            Instruction applyActionsInstruction = new InstructionBuilder().setOrder(0)
+                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab.build()).build()).build();
+            instruction.add(applyActionsInstruction);
 
-			String flowIdString = "FlowDrop";
-			FlowId flowId = new FlowId(flowIdString);
-			FlowKey key = new FlowKey(flowId);
+            String flowIdString = "FlowDrop";
+            FlowId flowId = new FlowId(flowIdString);
+            FlowKey key = new FlowKey(flowId);
 
-			FlowBuilder flowBuilder = new FlowBuilder().setMatch(matchBuilder.build()).setId(new FlowId(flowId))
-					.setBarrier(true).setTableId((short) 0).setKey(key).setPriority(125).setFlowName(flowIdString)
-					.setHardTimeout(hardTimeOut).setIdleTimeout(timeout).setId(flowId)
-					.setInstructions(isb.setInstruction(instruction).build());
+            FlowBuilder flowBuilder = new FlowBuilder().setMatch(matchBuilder.build()).setId(new FlowId(flowId))
+                    .setBarrier(true).setTableId((short) 0).setKey(key).setPriority(HIGH_PRIORITY)
+                    .setFlowName(flowIdString).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId)
+                    .setInstructions(isb.setInstruction(instruction).build());
 
-			NodeKey nodeKey = new NodeKey(nodeId);
+            NodeKey nodeKey = new NodeKey(nodeId);
 
-			InstanceIdentifier<Flow> flowIID = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-					.augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder.getTableId()))
-					.child(Flow.class, flowBuilder.getKey()).build();
+            InstanceIdentifier<Flow> flowIID = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
+                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder.getTableId()))
+                    .child(Flow.class, flowBuilder.getKey()).build();
 
-			WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
-			writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID, flowBuilder.build());
-		} else {
+            WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
+            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID, flowBuilder.build(), true);
+            writeTransaction.commit();
+        } else {
 
-			// Set new SourceIP and DestinationIP to Global and
-			// OutputNodeConnector to port
+            // Set new SourceIP and DestinationIP to Global and
+            // OutputNodeConnector to port
 
-			MatchBuilder matchBuilder1 = new MatchBuilder().setInPort(inPort);
+            MatchBuilder matchBuilder1 = new MatchBuilder().setInPort(inPort);
 
-			MatchBuilder matchBuilder2 = new MatchBuilder().setInPort(outPort);
+            MatchBuilder matchBuilder2 = new MatchBuilder().setInPort(outPort);
 
-			List<Action> actionList1 = new ArrayList<Action>();
+            List<Action> actionList1 = new ArrayList<Action>();
 
-			Action action1 = new ActionBuilder().setOrder(1)
-					.setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
-							.setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
-					.build();
+            Action action1 = new ActionBuilder().setOrder(1)
+                    .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
+                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
+                    .build();
 
-			Ipv4Builder ipsrc = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(srcIP));
+            Ipv4Builder ipsrc = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(srcIP));
 
-			SetNwSrcActionBuilder setNwsrcActionBuilder = new SetNwSrcActionBuilder().setAddress(ipsrc.build());
+            SetNwSrcActionBuilder setNwsrcActionBuilder = new SetNwSrcActionBuilder().setAddress(ipsrc.build());
 
-			Action action11 = new ActionBuilder().setOrder(0)
-					.setAction(new SetNwSrcActionCaseBuilder().setSetNwSrcAction(setNwsrcActionBuilder.build()).build())
-					.build();
+            Action action11 = new ActionBuilder().setOrder(0)
+                    .setAction(new SetNwSrcActionCaseBuilder().setSetNwSrcAction(setNwsrcActionBuilder.build()).build())
+                    .build();
 
-			actionList1.add(action11);
-			actionList1.add(action1);
+            actionList1.add(action11);
+            actionList1.add(action1);
 
-			LOG.info("Action List 1: " + actionList1);
+            LOG.info("Action List 1: " + actionList1);
 
-			List<Action> actionList2 = Lists.newArrayList();
+            List<Action> actionList2 = Lists.newArrayList();
 
-			Action action2 = new ActionBuilder().setOrder(1)
-					.setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
-							.setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(inPort).build()).build())
-					.build();
+            Action action2 = new ActionBuilder().setOrder(1)
+                    .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
+                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(inPort).build()).build())
+                    .build();
 
-			Ipv4Builder ipDst = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(dstIP));
+            Ipv4Builder ipDst = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(dstIP));
 
-			SetNwDstActionBuilder setNwDstActionBuilder = new SetNwDstActionBuilder().setAddress(ipDst.build());
+            SetNwDstActionBuilder setNwDstActionBuilder = new SetNwDstActionBuilder().setAddress(ipDst.build());
 
-			Action action21 = new ActionBuilder().setOrder(0)
-					.setAction(new SetNwDstActionCaseBuilder().setSetNwDstAction(setNwDstActionBuilder.build()).build())
-					.build();
+            Action action21 = new ActionBuilder().setOrder(0)
+                    .setAction(new SetNwDstActionCaseBuilder().setSetNwDstAction(setNwDstActionBuilder.build()).build())
+                    .build();
 
-			actionList2.add(action21);
-			actionList2.add(action2);
+            actionList2.add(action21);
+            actionList2.add(action2);
 
-			LOG.info("Action List 2: " + actionList2);
-			ApplyActionsBuilder aab1 = new ApplyActionsBuilder().setAction(actionList1);
+            LOG.info("Action List 2: " + actionList2);
+            ApplyActionsBuilder aab1 = new ApplyActionsBuilder().setAction(actionList1);
 
-			ApplyActionsBuilder aab2 = new ApplyActionsBuilder().setAction(actionList2);
-			InstructionsBuilder isb1 = new InstructionsBuilder();
-			List<Instruction> instruction1 = Lists.newArrayList();
-			Instruction applyActionsInstruction1 = new InstructionBuilder().setOrder(0)
-					.setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab1.build()).build()).build();
+            ApplyActionsBuilder aab2 = new ApplyActionsBuilder().setAction(actionList2);
+            InstructionsBuilder isb1 = new InstructionsBuilder();
+            List<Instruction> instruction1 = Lists.newArrayList();
+            Instruction applyActionsInstruction1 = new InstructionBuilder().setOrder(0)
+                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab1.build()).build()).build();
 
-			InstructionsBuilder isb2 = new InstructionsBuilder();
-			List<Instruction> instruction2 = Lists.newArrayList();
-			Instruction applyActionsInstruction2 = new InstructionBuilder().setOrder(1)
-					.setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab2.build()).build()).build();
+            InstructionsBuilder isb2 = new InstructionsBuilder();
+            List<Instruction> instruction2 = Lists.newArrayList();
+            Instruction applyActionsInstruction2 = new InstructionBuilder().setOrder(1)
+                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab2.build()).build()).build();
 
-			instruction1.add(applyActionsInstruction1);
-			instruction2.add(applyActionsInstruction2);
+            instruction1.add(applyActionsInstruction1);
+            instruction2.add(applyActionsInstruction2);
 
-			String flowIdString1 = "FlowSrc";
-			FlowId flowId1 = new FlowId(flowIdString1);
-			FlowKey key1 = new FlowKey(flowId1);
+            String flowIdString1 = "FlowSrc";
+            FlowId flowId1 = new FlowId(flowIdString1);
+            FlowKey key1 = new FlowKey(flowId1);
 
-			FlowBuilder flowBuilder1 = new FlowBuilder().setMatch(matchBuilder1.build()).setId(new FlowId(flowId1))
-					.setBarrier(true).setTableId((short) 0).setKey(key1).setPriority(priority2).setFlowName(flowIdString1)
-					.setHardTimeout(hardTimeOut).setIdleTimeout(timeout).setId(flowId1)
-					.setInstructions(isb1.setInstruction(instruction1).build());
+            FlowBuilder flowBuilder1 = new FlowBuilder().setMatch(matchBuilder1.build()).setId(new FlowId(flowId1))
+                    .setBarrier(true).setTableId((short) 0).setKey(key1).setPriority(HIGH_PRIORITY)
+                    .setFlowName(flowIdString1).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId1)
+                    .setInstructions(isb1.setInstruction(instruction1).build());
 
-			LOG.info("Flow Builder 1: Instruction " + flowBuilder1.getInstructions());
+            LOG.info("Flow Builder 1: Instruction " + flowBuilder1.getInstructions());
 
-			String flowIdString2 = "FlowDst";
-			FlowId flowId2 = new FlowId(flowIdString2);
-			FlowKey key2 = new FlowKey(flowId2);
+            String flowIdString2 = "FlowDst";
+            FlowId flowId2 = new FlowId(flowIdString2);
+            FlowKey key2 = new FlowKey(flowId2);
 
-			FlowBuilder flowBuilder2 = new FlowBuilder().setMatch(matchBuilder2.build()).setId(new FlowId(flowId2))
-					.setBarrier(true).setTableId((short) 0).setKey(key2).setPriority(priority1).setFlowName(flowIdString2)
-					.setHardTimeout(hardTimeOut).setIdleTimeout(timeout).setId(flowId2)
-					.setInstructions(isb2.setInstruction(instruction2).build());
+            FlowBuilder flowBuilder2 = new FlowBuilder().setMatch(matchBuilder2.build()).setId(new FlowId(flowId2))
+                    .setBarrier(true).setTableId((short) 0).setKey(key2).setPriority(LOW_PRIORITY)
+                    .setFlowName(flowIdString2).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId2)
+                    .setInstructions(isb2.setInstruction(instruction2).build());
 
-			LOG.info("Flow Builder 2: Instruction " + flowBuilder2.getInstructions());
+            LOG.info("Flow Builder 2: Instruction " + flowBuilder2.getInstructions());
 
-			NodeKey nodeKey = new NodeKey(nodeId);
+            NodeKey nodeKey = new NodeKey(nodeId);
 
-			InstanceIdentifier<Flow> flowIID1 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-					.augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder1.getTableId()))
-					.child(Flow.class, flowBuilder1.getKey()).build();
+            InstanceIdentifier<Flow> flowIID1 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
+                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder1.getTableId()))
+                    .child(Flow.class, flowBuilder1.getKey()).build();
 
-			InstanceIdentifier<Flow> flowIID2 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-					.augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder2.getTableId()))
-					.child(Flow.class, flowBuilder2.getKey()).build();
+            InstanceIdentifier<Flow> flowIID2 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
+                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder2.getTableId()))
+                    .child(Flow.class, flowBuilder2.getKey()).build();
 
-			WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
-			writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID1, flowBuilder1.build());
-			writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID2, flowBuilder2.build());
-			writeTransaction.commit();
-			LOG.info("Flows created");
+            WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
+            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID1, flowBuilder1.build(), true);
+            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID2, flowBuilder2.build(), true);
+            writeTransaction.commit();
+            LOG.info("Flows created");
 
-		}
-	}
+        }
+    }
 }
