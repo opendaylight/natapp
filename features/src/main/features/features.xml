@@ -23,7 +23,7 @@ and is available at http://www.eclipse.org/legal/epl-v10.html
   </feature>
   <feature name='odl-natapp' version='${project.version}' description='OpenDaylight :: natapp'>
     <feature version='${mdsal.version}'>odl-mdsal-broker</feature>
-    <feature version='${openflowplugin.version}'>odl-openflowplugin-all</feature>
+    <feature version='${openflowplugin.version}'>odl-openflowplugin-flow-services-ui</feature>
     <feature version='${project.version}'>odl-natapp-api</feature>
     <bundle>mvn:org.opendaylight.natapp/natapp-impl/{{VERSION}}</bundle>
     <configfile finalname="${configfile.directory}/natapp.xml">mvn:org.opendaylight.natapp/natapp-impl/{{VERSION}}/xml/config</configfile>
