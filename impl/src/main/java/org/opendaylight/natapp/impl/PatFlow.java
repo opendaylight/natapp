@@ -37,6 +37,8 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatch;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatchBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.layer._3.match.Ipv4MatchBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.IpMatch;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.IpMatchBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.flow.MatchBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.FlowModFlags;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.instruction.ApplyActionsCaseBuilder;
@@ -53,8 +55,13 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.acti
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.set.nw.src.action._case.SetNwSrcActionBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.SetNwDstActionCaseBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.set.nw.dst.action._case.SetNwDstActionBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.SetTpDstActionCaseBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.set.tp.dst.action._case.SetTpDstActionBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.SetTpSrcActionCaseBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.set.tp.src.action._case.SetTpSrcActionBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.layer._4.match.TcpMatchBuilder;
 import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev100924.PortNumber;
+//import org.opendaylight.yang.gen.v1.urn.opendaylight.openflow.common.types.rev130731.PortNumber;
 import org.opendaylight.yangtools.yang.binding.InstanceIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,66 +76,81 @@ public class PatFlow {
         this.dataBroker = dataBroker;
     }
 
-    public void createFlow(NodeId nodeId, NodeConnectorId inPort, NodeConnectorId outPort, int tcpPort, String srcIP,
-            String dstIP, int idleTimeOut) {
-        // set inport, outport and IP
+    public void createFlow(NodeId nodeId, NodeConnectorId inPort, NodeConnectorId outPort, int srcPort, int dstPort,
+            String srcIP, String dstIP) {
 
+        // Ethernet Match
         EthernetType ethTypeBuilder = new EthernetTypeBuilder().setType(new EtherType(0x0800L)).build();
-
         EthernetMatch eth = new EthernetMatchBuilder().setEthernetType(ethTypeBuilder).build();
 
-        TcpMatchBuilder tcpMatchBuilder = new TcpMatchBuilder();
-        tcpMatchBuilder.setTcpSourcePort(new PortNumber(tcpPort));
+        // IP protocol match
+        IpMatch ipmatch = new IpMatchBuilder().setIpProtocol((short) 6).build();
 
-        MatchBuilder matchBuilder1 = new MatchBuilder().setInPort(inPort).setLayer4Match(tcpMatchBuilder.build());
+        // TCP port match
+        TcpMatchBuilder tcpSrcMatchBuilder = new TcpMatchBuilder().setTcpSourcePort(new PortNumber(srcPort));
 
-        MatchBuilder matchBuilder2 = new MatchBuilder().setInPort(outPort);
+        TcpMatchBuilder tcpDstMatchBuilder = new TcpMatchBuilder().setTcpDestinationPort(new PortNumber(dstPort));
 
-        List<Action> actionList1 = new ArrayList<Action>();
+        MatchBuilder matchBuilderSrc = new MatchBuilder().setInPort(inPort).setEthernetMatch(eth)
+                .setIpMatch(ipmatch).setLayer4Match(tcpSrcMatchBuilder.build());
 
-        Action action1 = new ActionBuilder().setOrder(1)
-                .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
-                        .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
-                .build();
+        MatchBuilder matchBuilderDst = new MatchBuilder().setInPort(outPort).setEthernetMatch(eth)
+                .setIpMatch(ipmatch).setLayer4Match(tcpDstMatchBuilder.build());
 
-        // Setting new Src Ip to Global
+        List<Action> actionListSrc = new ArrayList<Action>();
+
+        // Action to set Network Source IP to Global
         Ipv4Builder ipsrc = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(srcIP));
-
         SetNwSrcActionBuilder setNwsrcActionBuilder = new SetNwSrcActionBuilder().setAddress(ipsrc.build());
-
-        Action action11 = new ActionBuilder().setOrder(0)
+        Action nwSrcIpAction = new ActionBuilder().setOrder(0)
                 .setAction(new SetNwSrcActionCaseBuilder().setSetNwSrcAction(setNwsrcActionBuilder.build()).build())
                 .build();
 
-        actionList1.add(action11);
-        actionList1.add(action1);
+        // Action to set TCP Source Port
+        SetTpSrcActionBuilder setTpSrcActionBuilder = new SetTpSrcActionBuilder().setPort(new PortNumber(dstPort));
+        Action tpSrcAction = new ActionBuilder().setOrder(1)
+                .setAction(new SetTpSrcActionCaseBuilder().setSetTpSrcAction(setTpSrcActionBuilder.build()).build()).build();
 
-        LOG.info("Action List 1: " + actionList1);
-
-        List<Action> actionList2 = Lists.newArrayList();
-
-        Action action2 = new ActionBuilder().setOrder(1)
+        // Action to Output the packets
+        Action srcOutputAction = new ActionBuilder().setOrder(2)
                 .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
                         .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
                 .build();
 
-        // Setting new Dst Ip to Global
+        actionListSrc.add(nwSrcIpAction);
+        actionListSrc.add(tpSrcAction);
+        actionListSrc.add(srcOutputAction);
+        LOG.info("Action List 1: " + actionListSrc);
+
+        List<Action> actionListDst = Lists.newArrayList();
+
+        // Action to set Network Destination IP to Global
         Ipv4Builder ipDst = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(dstIP));
-
         SetNwDstActionBuilder setNwDstActionBuilder = new SetNwDstActionBuilder().setAddress(ipDst.build());
-
-        Action action21 = new ActionBuilder().setOrder(0)
+        Action nwDstIpAction = new ActionBuilder().setOrder(0)
                 .setAction(new SetNwDstActionCaseBuilder().setSetNwDstAction(setNwDstActionBuilder.build()).build())
                 .build();
 
-        actionList2.add(action21);
-        actionList2.add(action2);
+        // Action to set TCP Destination Port
+        SetTpDstActionBuilder setTpDstActionBuilder = new SetTpDstActionBuilder().setPort(new PortNumber(srcPort));
+        Action tpDstAction = new ActionBuilder().setOrder(1)
+                .setAction(new SetTpDstActionCaseBuilder().setSetTpDstAction(setTpDstActionBuilder.build()).build()).build();
 
-        LOG.info("Action List 2: " + actionList2);
+        // Action to Output the packets
+        Action dstOutputAction = new ActionBuilder().setOrder(2)
+                .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
+                        .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(inPort).build()).build())
+                .build();
+
+        actionListDst.add(nwDstIpAction);
+        actionListDst.add(tpDstAction);
+        actionListDst.add(dstOutputAction);
+
+        LOG.info("Action List 2: " + actionListDst);
         // Create an Apply Action
-        ApplyActionsBuilder aab1 = new ApplyActionsBuilder().setAction(actionList1);
+        ApplyActionsBuilder aab1 = new ApplyActionsBuilder().setAction(actionListSrc);
 
-        ApplyActionsBuilder aab2 = new ApplyActionsBuilder().setAction(actionList2);
+        ApplyActionsBuilder aab2 = new ApplyActionsBuilder().setAction(actionListDst);
 
         InstructionsBuilder isb1 = new InstructionsBuilder();
         List<Instruction> instruction1 = Lists.newArrayList();
@@ -147,9 +169,9 @@ public class PatFlow {
         FlowId flowId1 = new FlowId(flowIdString1);
         FlowKey key1 = new FlowKey(flowId1);
 
-        FlowBuilder flowBuilder1 = new FlowBuilder().setMatch(matchBuilder1.build()).setId(new FlowId(flowId1))
+        FlowBuilder flowBuilder1 = new FlowBuilder().setMatch(matchBuilderSrc.build()).setId(new FlowId(flowId1))
                 .setBarrier(true).setTableId((short) 0).setKey(key1).setPriority(210).setFlowName(flowIdString1)
-                .setHardTimeout(0).setIdleTimeout(idleTimeOut).setId(flowId1)
+                .setHardTimeout(0).setIdleTimeout(0).setId(flowId1)
                 .setInstructions(isb1.setInstruction(instruction1).build());
 
         LOG.info("Flow Builder 1: Instruction " + flowBuilder1.getInstructions());
@@ -158,9 +180,9 @@ public class PatFlow {
         FlowId flowId2 = new FlowId(flowIdString2);
         FlowKey key2 = new FlowKey(flowId2);
 
-        FlowBuilder flowBuilder2 = new FlowBuilder().setMatch(matchBuilder2.build()).setId(new FlowId(flowId2))
+        FlowBuilder flowBuilder2 = new FlowBuilder().setMatch(matchBuilderDst.build()).setId(new FlowId(flowId2))
                 .setBarrier(true).setTableId((short) 0).setKey(key2).setPriority(209).setFlowName(flowIdString2)
-                .setHardTimeout(0).setIdleTimeout(20).setId(flowId2)
+                .setHardTimeout(0).setIdleTimeout(0).setId(flowId2)
                 .setInstructions(isb2.setInstruction(instruction2).build());
 
         NodeKey nodeKey = new NodeKey(nodeId);

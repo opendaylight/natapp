@@ -39,6 +39,11 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instru
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.instruction.apply.actions._case.ApplyActionsBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.list.Instruction;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.list.InstructionBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.l2.types.rev130827.EtherType;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.ethernet.match.fields.EthernetType;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.ethernet.match.fields.EthernetTypeBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatch;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatchBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeConnectorId;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeId;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.Nodes;
@@ -65,56 +70,18 @@ public class NatFlow {
             int timeout) {
 
         String localPort = inPort.getValue();
-        if (localPort.contains("LOCAL") || srcIP.contains("null") || dstIP.contains("null") || srcIP.contains("-")) {
+        if (!(localPort.contains("LOCAL") || srcIP.contains("null") || dstIP.contains("-") || srcIP.contains("-"))) {
 
-            // drop a packet
-            MatchBuilder matchBuilder = new MatchBuilder().setInPort(inPort);
-            List<Action> actionList = new ArrayList<Action>();
+            EthernetType ethTypeBuilder = new EthernetTypeBuilder().setType(new EtherType(0x0800L)).build();
+            EthernetMatch eth = new EthernetMatchBuilder().setEthernetType(ethTypeBuilder).build();
+            
+            MatchBuilder matchBuilderSrc = new MatchBuilder().setInPort(inPort).setEthernetMatch(eth);
 
-            DropActionBuilder drop = new DropActionBuilder();
-            DropAction dropAction = drop.build();
+            MatchBuilder matchBuilderDst = new MatchBuilder().setInPort(outPort).setEthernetMatch(eth);
 
-            Action action = new ActionBuilder().setOrder(0)
-                    .setAction(new DropActionCaseBuilder().setDropAction(dropAction).build()).build();
-            actionList.add(action);
-            ApplyActionsBuilder aab = new ApplyActionsBuilder().setAction(actionList);
+            List<Action> actionListSrc = new ArrayList<Action>();
 
-            InstructionsBuilder isb = new InstructionsBuilder();
-            List<Instruction> instruction = Lists.newArrayList();
-            Instruction applyActionsInstruction = new InstructionBuilder().setOrder(0)
-                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab.build()).build()).build();
-            instruction.add(applyActionsInstruction);
-
-            String flowIdString = "FlowDrop";
-            FlowId flowId = new FlowId(flowIdString);
-            FlowKey key = new FlowKey(flowId);
-
-            FlowBuilder flowBuilder = new FlowBuilder().setMatch(matchBuilder.build()).setId(new FlowId(flowId))
-                    .setBarrier(true).setTableId((short) 0).setKey(key).setPriority(HIGH_PRIORITY)
-                    .setFlowName(flowIdString).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId)
-                    .setInstructions(isb.setInstruction(instruction).build());
-
-            NodeKey nodeKey = new NodeKey(nodeId);
-
-            InstanceIdentifier<Flow> flowIID = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder.getTableId()))
-                    .child(Flow.class, flowBuilder.getKey()).build();
-
-            WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
-            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID, flowBuilder.build(), true);
-            writeTransaction.commit();
-        } else {
-
-            // Set new SourceIP and DestinationIP to Global and
-            // OutputNodeConnector to port
-
-            MatchBuilder matchBuilder1 = new MatchBuilder().setInPort(inPort);
-
-            MatchBuilder matchBuilder2 = new MatchBuilder().setInPort(outPort);
-
-            List<Action> actionList1 = new ArrayList<Action>();
-
-            Action action1 = new ActionBuilder().setOrder(1)
+            Action actionSrcOutput = new ActionBuilder().setOrder(1)
                     .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
                             .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
                     .build();
@@ -123,18 +90,18 @@ public class NatFlow {
 
             SetNwSrcActionBuilder setNwsrcActionBuilder = new SetNwSrcActionBuilder().setAddress(ipsrc.build());
 
-            Action action11 = new ActionBuilder().setOrder(0)
+            Action actionNwSrc = new ActionBuilder().setOrder(0)
                     .setAction(new SetNwSrcActionCaseBuilder().setSetNwSrcAction(setNwsrcActionBuilder.build()).build())
                     .build();
 
-            actionList1.add(action11);
-            actionList1.add(action1);
+            actionListSrc.add(actionNwSrc);
+            actionListSrc.add(actionSrcOutput);
 
-            LOG.info("Action List 1: " + actionList1);
+            LOG.info("Action List Src: " + actionListSrc);
 
-            List<Action> actionList2 = Lists.newArrayList();
+            List<Action> actionListDst = Lists.newArrayList();
 
-            Action action2 = new ActionBuilder().setOrder(1)
+            Action actionDstOutput = new ActionBuilder().setOrder(1)
                     .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
                             .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(inPort).build()).build())
                     .build();
@@ -143,65 +110,65 @@ public class NatFlow {
 
             SetNwDstActionBuilder setNwDstActionBuilder = new SetNwDstActionBuilder().setAddress(ipDst.build());
 
-            Action action21 = new ActionBuilder().setOrder(0)
+            Action actionnwDst = new ActionBuilder().setOrder(0)
                     .setAction(new SetNwDstActionCaseBuilder().setSetNwDstAction(setNwDstActionBuilder.build()).build())
                     .build();
 
-            actionList2.add(action21);
-            actionList2.add(action2);
+            actionListDst.add(actionnwDst);
+            actionListDst.add(actionDstOutput);
 
-            LOG.info("Action List 2: " + actionList2);
-            ApplyActionsBuilder aab1 = new ApplyActionsBuilder().setAction(actionList1);
+            LOG.info("Action List Dst: " + actionListDst);
+            ApplyActionsBuilder aabSrc = new ApplyActionsBuilder().setAction(actionListSrc);
+            ApplyActionsBuilder aabDst = new ApplyActionsBuilder().setAction(actionListDst);
+            
+            InstructionsBuilder isbSrc = new InstructionsBuilder();
+            List<Instruction> instructionSrcList = Lists.newArrayList();
+            Instruction instructionSrc = new InstructionBuilder().setOrder(0)
+                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aabSrc.build()).build()).build();
 
-            ApplyActionsBuilder aab2 = new ApplyActionsBuilder().setAction(actionList2);
-            InstructionsBuilder isb1 = new InstructionsBuilder();
-            List<Instruction> instruction1 = Lists.newArrayList();
-            Instruction applyActionsInstruction1 = new InstructionBuilder().setOrder(0)
-                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab1.build()).build()).build();
+            InstructionsBuilder isbDst = new InstructionsBuilder();
+            List<Instruction> instructionDstList = Lists.newArrayList();
+            Instruction instructionDst = new InstructionBuilder().setOrder(1)
+                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aabDst.build()).build()).build();
 
-            InstructionsBuilder isb2 = new InstructionsBuilder();
-            List<Instruction> instruction2 = Lists.newArrayList();
-            Instruction applyActionsInstruction2 = new InstructionBuilder().setOrder(1)
-                    .setInstruction(new ApplyActionsCaseBuilder().setApplyActions(aab2.build()).build()).build();
+            instructionSrcList.add(instructionSrc);
+            instructionDstList.add(instructionDst);
 
-            instruction1.add(applyActionsInstruction1);
-            instruction2.add(applyActionsInstruction2);
+            String flowIdStringSrc = "FlowSrc";
+            FlowId flowIdSrc = new FlowId(flowIdStringSrc);
+            FlowKey keySrc = new FlowKey(flowIdSrc);
 
-            String flowIdString1 = "FlowSrc";
-            FlowId flowId1 = new FlowId(flowIdString1);
-            FlowKey key1 = new FlowKey(flowId1);
+            FlowBuilder flowBuilderSrc = new FlowBuilder().setMatch(matchBuilderSrc.build()).setId(new FlowId(flowIdSrc))
+                    .setBarrier(true).setTableId((short) 0).setKey(keySrc).setPriority(HIGH_PRIORITY)
+                    .setFlowName(flowIdStringSrc).setHardTimeout(0).setIdleTimeout(timeout).setId(flowIdSrc)
+                    .setInstructions(isbSrc.setInstruction(instructionSrcList).build());
 
-            FlowBuilder flowBuilder1 = new FlowBuilder().setMatch(matchBuilder1.build()).setId(new FlowId(flowId1))
-                    .setBarrier(true).setTableId((short) 0).setKey(key1).setPriority(HIGH_PRIORITY)
-                    .setFlowName(flowIdString1).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId1)
-                    .setInstructions(isb1.setInstruction(instruction1).build());
+            LOG.info("Flow Builder 1: Instruction " + flowBuilderSrc.getInstructions());
 
-            LOG.info("Flow Builder 1: Instruction " + flowBuilder1.getInstructions());
+            String flowIdStringDst = "FlowDst";
+            FlowId flowIdDst = new FlowId(flowIdStringDst);
+            FlowKey keyDst = new FlowKey(flowIdDst);
 
-            String flowIdString2 = "FlowDst";
-            FlowId flowId2 = new FlowId(flowIdString2);
-            FlowKey key2 = new FlowKey(flowId2);
+            FlowBuilder flowBuilderDst = new FlowBuilder().setMatch(matchBuilderDst.build()).setId(new FlowId(flowIdDst))
+                    .setBarrier(true).setTableId((short) 0).setKey(keyDst).setPriority(LOW_PRIORITY)
+                    .setFlowName(flowIdStringDst).setHardTimeout(0).setIdleTimeout(timeout).setId(flowIdDst)
+                    .setInstructions(isbDst.setInstruction(instructionDstList).build());
 
-            FlowBuilder flowBuilder2 = new FlowBuilder().setMatch(matchBuilder2.build()).setId(new FlowId(flowId2))
-                    .setBarrier(true).setTableId((short) 0).setKey(key2).setPriority(LOW_PRIORITY)
-                    .setFlowName(flowIdString2).setHardTimeout(0).setIdleTimeout(timeout).setId(flowId2)
-                    .setInstructions(isb2.setInstruction(instruction2).build());
-
-            LOG.info("Flow Builder 2: Instruction " + flowBuilder2.getInstructions());
+            LOG.info("Flow Builder 2: Instruction " + flowBuilderDst.getInstructions());
 
             NodeKey nodeKey = new NodeKey(nodeId);
 
-            InstanceIdentifier<Flow> flowIID1 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder1.getTableId()))
-                    .child(Flow.class, flowBuilder1.getKey()).build();
+            InstanceIdentifier<Flow> flowSrc = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
+                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilderSrc.getTableId()))
+                    .child(Flow.class, flowBuilderSrc.getKey()).build();
 
-            InstanceIdentifier<Flow> flowIID2 = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
-                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilder2.getTableId()))
-                    .child(Flow.class, flowBuilder2.getKey()).build();
+            InstanceIdentifier<Flow> flowDst = InstanceIdentifier.builder(Nodes.class).child(Node.class, nodeKey)
+                    .augmentation(FlowCapableNode.class).child(Table.class, new TableKey(flowBuilderDst.getTableId()))
+                    .child(Flow.class, flowBuilderDst.getKey()).build();
 
             WriteTransaction writeTransaction = dataBroker.newWriteOnlyTransaction();
-            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID1, flowBuilder1.build(), true);
-            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowIID2, flowBuilder2.build(), true);
+            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowSrc, flowBuilderSrc.build(), true);
+            writeTransaction.merge(LogicalDatastoreType.CONFIGURATION, flowDst, flowBuilderDst.build(), true);
             writeTransaction.commit();
             LOG.info("Flows created");
 

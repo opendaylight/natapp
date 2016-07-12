@@ -48,7 +48,7 @@ public class PatFlowTest {
 		NodeConnectorId inPort = new NodeConnectorId("openflow:1:2");
 		NodeConnectorId outPort = new NodeConnectorId("openflow:1:1");
 		String srcIP = "172.0.0.2/32", dstIP = "10.0.0.3/32";
-		patFlow.createFlow(nodeId, inPort, outPort, 2000, srcIP, dstIP, 20);
+		patFlow.createFlow(nodeId, inPort, outPort, 2048, 2000, srcIP, dstIP);
 		verify(writeTransaction, times(2)).merge(any(LogicalDatastoreType.class), any(InstanceIdentifier.class),any(DataObject.class), anyBoolean());
 		verify(writeTransaction, times(0)).submit();
 	}

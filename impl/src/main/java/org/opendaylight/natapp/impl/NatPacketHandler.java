@@ -100,27 +100,26 @@ public class NatPacketHandler implements PacketProcessingListener, NatappService
             Static staticType = (Static) type;
             if (staticType.isStatic()) {
                 String staticIP = natYangStore.addStaticMap(srcIP);
-                dstIP += "/32";
+                srcIP += "/32";
                 LOG.info("Static flow creation");
-                natFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, staticIP, dstIP, 0);
+                natFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, staticIP, srcIP, 0);
             }
         } else if (type instanceof Dynamic) {
             Dynamic dynamicType = (Dynamic) type;
             if (dynamicType.isDynamic()) {
                 String dynamicIP = natYangStore.addDynamicMap(srcIP);
-                dstIP += "/32";
+                srcIP += "/32";
                 LOG.info("Dynamic flow creation");
-                natFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, dynamicIP, dstIP, IDLE_TIMEOUT);
+                natFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, dynamicIP, srcIP, IDLE_TIMEOUT);
             }
         } else if (type instanceof Pat) {
             Pat patType = (Pat) type;
             if (patType.isPat()) {
                 tcpPort = natYangStore.addPatMap(srcIP, srcPort);
                 globalIP = natYangStore.getPatGlobalIP();
-                dstIP += "/32";
+                srcIP += "/32";
                 LOG.info("Pat flow creation");
-                patFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, tcpPort, globalIP, dstIP,
-                        IDLE_TIMEOUT);
+                patFlow.createFlow(ingressNodeId, ingressNodeConnectorId, outPort, srcPort, tcpPort, globalIP, srcIP);
             }
         }
         // Sending packet out
