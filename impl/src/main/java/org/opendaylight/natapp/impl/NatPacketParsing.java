@@ -8,7 +8,7 @@
 package org.opendaylight.natapp.impl;
 
 import java.util.Arrays;
-import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.yang.types.rev100924.MacAddress;
+import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.yang.types.rev130715.MacAddress;
 
 public class NatPacketParsing {
 
