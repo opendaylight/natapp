@@ -7,13 +7,15 @@
  */
 package org.opendaylight.natapp.impl;
 
+import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev130715.Uri;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import org.opendaylight.controller.md.sal.binding.api.DataBroker;
 import org.opendaylight.controller.md.sal.binding.api.WriteTransaction;
 import org.opendaylight.controller.md.sal.common.api.data.LogicalDatastoreType;
-import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev100924.Ipv4Prefix;
+import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev130715.Ipv4Prefix;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.DropActionCaseBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.OutputActionCaseBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.action.types.rev131112.action.action.SetNwDstActionCaseBuilder;
@@ -52,11 +54,14 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.nodes.N
 import org.opendaylight.yangtools.yang.binding.InstanceIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+//import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev100924.Uri;
+
 
 import com.google.common.collect.Lists;
 
-public class NatFlow {
 
+public class NatFlow {
+	
     private static final Logger LOG = LoggerFactory.getLogger(NatFlow.class);
     private static final int HIGH_PRIORITY = 211, LOW_PRIORITY = 212;
     private static final int HARD_TIMEOUT = 0;
@@ -68,10 +73,12 @@ public class NatFlow {
 
     public void createFlow(NodeId nodeId, NodeConnectorId inPort, NodeConnectorId outPort, String srcIP, String dstIP,
             int timeout) {
-
+    	
+    	String outport = outPort.getValue();
+    	String inport = inPort.getValue();
         String localPort = inPort.getValue();
         if (!(localPort.contains("LOCAL") || srcIP.contains("null") || dstIP.contains("-") || srcIP.contains("-"))) {
-
+        	
             EthernetType ethTypeBuilder = new EthernetTypeBuilder().setType(new EtherType(0x0800L)).build();
             EthernetMatch eth = new EthernetMatchBuilder().setEthernetType(ethTypeBuilder).build();
             
@@ -83,8 +90,14 @@ public class NatFlow {
 
             Action actionSrcOutput = new ActionBuilder().setOrder(1)
                     .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
-                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(outPort).build()).build())
+                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(new Uri(outport)).build()).build())
                     .build();
+
+
+
+
+
+
 
             Ipv4Builder ipsrc = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(srcIP));
 
@@ -103,7 +116,7 @@ public class NatFlow {
 
             Action actionDstOutput = new ActionBuilder().setOrder(1)
                     .setAction(new OutputActionCaseBuilder().setOutputAction(new OutputActionBuilder()
-                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(inPort).build()).build())
+                            .setMaxLength(Integer.valueOf(0xffff)).setOutputNodeConnector(new Uri(inport)).build()).build())
                     .build();
 
             Ipv4Builder ipDst = new Ipv4Builder().setIpv4Address(new Ipv4Prefix(dstIP));

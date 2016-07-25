@@ -9,6 +9,9 @@ package org.opendaylight.natapp.impl;
 
 import com.google.common.util.concurrent.Futures;
 import org.opendaylight.yangtools.yang.common.RpcResult;
+
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.concurrent.Future;
 import org.opendaylight.controller.md.sal.binding.api.DataBroker;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeConnectorId;
@@ -90,7 +93,13 @@ public class NatPacketHandler implements PacketProcessingListener, NatappService
         srcPort = NatPacketParsing.rawPortToInteger(rawSrcPort);
         rawDstPort = NatPacketParsing.extractDstPort(payload);
         dstPort = NatPacketParsing.rawPortToInteger(rawDstPort);
-        NodeConnectorId outPort = new NodeConnectorId("openflow:1:5");
+        
+        int lastIndexDotdstIP = dstIP.lastIndexOf(".") + 1; 
+        int lengthdstIP = dstIP.length();
+        String dstHostAdd = dstIP.substring(lastIndexDotdstIP, lengthdstIP);
+        String nodeConnectorIdString = "openflow:1:" + dstHostAdd;
+        NodeConnectorId outPort = new NodeConnectorId(nodeConnectorIdString);
+        //NodeConnectorId outPort = new NodeConnectorId("openflow:1:5");
         LOG.info("Packet Details: DstIP {}, SrcIP {}, Ingress Node {}, NatType {} ", dstIP, srcIP, ingressNode, type);
         LOG.info("IngressNodeConnectorID : {}, IngressNodeID : {}", ingressNodeConnectorId, ingressNodeId);
         LOG.info(
